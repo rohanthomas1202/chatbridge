@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spotify Playlist Creator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #121212 0%, #1a1a2e 100%);
+      color: #e0e0e0;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .loading { text-align: center; padding: 40px; color: #8892b0; }
+    .playlist-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      overflow: hidden;
+    }
+    .playlist-header {
+      background: linear-gradient(135deg, #1DB954 0%, #1aa34a 100%);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .spotify-logo { font-size: 28px; }
+    .playlist-title { font-size: 18px; font-weight: 700; color: white; }
+    .playlist-subtitle { font-size: 12px; color: rgba(255,255,255,0.8); }
+    .track-list { padding: 8px 0; }
+    .track {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      transition: background 0.15s;
+    }
+    .track:hover { background: rgba(255,255,255,0.05); }
+    .track-num {
+      width: 20px;
+      text-align: right;
+      font-size: 13px;
+      color: #8892b0;
+      flex-shrink: 0;
+    }
+    .track-art {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .track-info { flex: 1; min-width: 0; }
+    .track-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e0e0e0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .track-artist {
+      font-size: 12px;
+      color: #8892b0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .track-duration { font-size: 12px; color: #8892b0; flex-shrink: 0; }
+    .mock-badge {
+      margin: 8px 16px 12px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      font-size: 11px;
+      color: #8892b0;
+      text-align: center;
+    }
+    .mock-badge a {
+      color: #1DB954;
+      text-decoration: none;
+    }
+    .auth-section {
+      text-align: center;
+      padding: 20px;
+    }
+    .auth-btn {
+      background: #1DB954;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .auth-btn:hover { background: #1ed760; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading">Waiting for playlist data...</div>
+  </div>
+
+  <script>
+    const ICONS = ['🎵', '🎶', '🎸', '🎹', '🥁', '🎷', '🎺', '🎻', '🎤', '🎼'];
+
+    function parseTracks(tracks) {
+      return tracks.map((t, i) => {
+        const parts = t.split(' - ');
+        const name = parts[0] || t;
+        const artist = parts[1] || 'Unknown Artist';
+        // Generate a "duration" for visual fidelity
+        const min = 2 + Math.floor(Math.random() * 4);
+        const sec = Math.floor(Math.random() * 60);
+        return {
+          num: i + 1,
+          name: name.trim(),
+          artist: artist.trim(),
+          duration: `${min}:${sec.toString().padStart(2, '0')}`,
+          icon: ICONS[i % ICONS.length],
+        };
+      });
+    }
+
+    function renderPlaylist(name, tracks) {
+      const parsed = parseTracks(tracks);
+      const totalMin = parsed.reduce((sum, t) => {
+        const [m, s] = t.duration.split(':').map(Number);
+        return sum + m + s / 60;
+      }, 0);
+
+      let trackHTML = parsed.map(t => `
+        <div class="track">
+          <div class="track-num">${t.num}</div>
+          <div class="track-art">${t.icon}</div>
+          <div class="track-info">
+            <div class="track-name">${t.name}</div>
+            <div class="track-artist">${t.artist}</div>
+          </div>
+          <div class="track-duration">${t.duration}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('app').innerHTML = `
+        <div class="playlist-card">
+          <div class="playlist-header">
+            <div class="spotify-logo">🎧</div>
+            <div>
+              <div class="playlist-title">${name}</div>
+              <div class="playlist-subtitle">${parsed.length} tracks · ~${Math.round(totalMin)} min</div>
+            </div>
+          </div>
+          <div class="track-list">${trackHTML}</div>
+          <div class="mock-badge">
+            Preview mode — connect Spotify OAuth to create real playlists
+          </div>
+        </div>
+      `;
+    }
+
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data || data.type !== 'plugin:invoke') return;
+      if (data.pluginId !== 'chatbridge-spotify') return;
+
+      window.__toolCallId = data.toolCallId;
+      const args = data.args || {};
+      const name = args.name || 'My Playlist';
+      const tracks = Array.isArray(args.tracks) ? args.tracks : [];
+
+      if (tracks.length === 0) {
+        document.getElementById('app').innerHTML = `
+          <div class="loading" style="color:#ff6b6b">No tracks provided.</div>`;
+        return;
+      }
+
+      renderPlaylist(name, tracks);
+
+      window.parent.postMessage({
+        type: 'plugin:complete',
+        pluginId: 'chatbridge-spotify',
+        toolCallId: data.toolCallId,
+        result: {
+          mode: 'mock',
+          playlistName: name,
+          trackCount: tracks.length,
+          tracks: tracks,
+        }
+      }, '*');
+    });
+
+    // Signal ready
+    window.parent.postMessage({ type: 'plugin:ready', pluginId: 'chatbridge-spotify' }, '*');
+  </script>
+</body>
+</html>

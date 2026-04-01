@@ -26,6 +26,7 @@ import { formatElapsedTime, useThinkingTimer } from '@/hooks/useThinkingTimer'
 import { getToolName } from '@/packages/tools'
 import type { SearchResultItem } from '@/packages/web-search'
 import { ScalableIcon } from '../common/ScalableIcon'
+import { isPluginResult, PluginIframeUI } from './PluginIframeUI'
 
 // ─── Tool Icon Mapping ──────────────────────────────────────────────
 
@@ -419,6 +420,10 @@ export const ToolCallPartUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
   }
   if (part.toolName === 'parse_link') {
     return <ParseLinkUI part={part} />
+  }
+  // Render plugin iframes for tool calls that returned plugin results
+  if (part.state === 'result' && isPluginResult(part.result)) {
+    return <PluginIframeUI part={part} />
   }
   return <GeneralToolCallUI part={part} />
 }

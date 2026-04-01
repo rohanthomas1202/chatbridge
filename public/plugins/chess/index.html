@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Plugin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px;
+      min-height: 100vh;
+    }
+    h3 { font-size: 14px; margin-bottom: 8px; color: #a8b2d1; }
+    #board-container {
+      width: 360px;
+      height: 360px;
+      position: relative;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+      width: 100%;
+      height: 100%;
+      border: 2px solid #4a4a6a;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .square {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.15s;
+    }
+    .square.light { background: #e8dcc8; }
+    .square.dark { background: #a87d5a; }
+    .square.selected { background: #7fb069 !important; }
+    .square.highlight { background: #d4a843 !important; }
+    .square.suggested-from { box-shadow: inset 0 0 0 3px #4fc3f7; }
+    .square.suggested-to { box-shadow: inset 0 0 0 3px #4fc3f7; }
+    #info {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #8892b0;
+      text-align: center;
+      max-width: 360px;
+      line-height: 1.4;
+    }
+    #status {
+      margin-top: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #64ffda;
+    }
+    .move-info {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: rgba(100, 255, 218, 0.1);
+      border-radius: 6px;
+      border: 1px solid rgba(100, 255, 218, 0.2);
+      font-size: 12px;
+      color: #a8b2d1;
+      max-width: 360px;
+    }
+  </style>
+</head>
+<body>
+  <h3>♟ Chess Board</h3>
+  <div id="board-container">
+    <div class="board" id="board"></div>
+  </div>
+  <div id="status"></div>
+  <div id="info">Click a piece to select, then click a destination to move.</div>
+  <div id="move-info" class="move-info" style="display:none"></div>
+
+  <script>
+    // Simple chess implementation (no full rule engine — demonstrates the plugin)
+    const PIECES = {
+      K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
+      k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟'
+    };
+
+    const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+    let board = [];
+    let selectedSquare = null;
+    let turn = 'w';
+    let suggestedFrom = null;
+    let suggestedTo = null;
+    let gameOver = false;
+
+    function fenToBoard(fen) {
+      const rows = fen.split(' ')[0].split('/');
+      const b = [];
+      for (let r = 0; r < 8; r++) {
+        b[r] = [];
+        let c = 0;
+        for (const ch of rows[r]) {
+          if (/\d/.test(ch)) {
+            for (let i = 0; i < parseInt(ch); i++) b[r][c++] = null;
+          } else {
+            b[r][c++] = ch;
+          }
+        }
+      }
+      turn = (fen.split(' ')[1] || 'w');
+      return b;
+    }
+
+    function boardToFen() {
+      let fen = '';
+      for (let r = 0; r < 8; r++) {
+        let empty = 0;
+        for (let c = 0; c < 8; c++) {
+          if (board[r][c]) {
+            if (empty > 0) { fen += empty; empty = 0; }
+            fen += board[r][c];
+          } else {
+            empty++;
+          }
+        }
+        if (empty > 0) fen += empty;
+        if (r < 7) fen += '/';
+      }
+      fen += ' ' + turn + ' KQkq - 0 1';
+      return fen;
+    }
+
+    function isWhite(piece) { return piece && piece === piece.toUpperCase(); }
+    function isBlack(piece) { return piece && piece === piece.toLowerCase(); }
+    function isOwnPiece(piece) {
+      return turn === 'w' ? isWhite(piece) : isBlack(piece);
+    }
+
+    function uciToCoords(uci) {
+      if (!uci || uci.length < 4) return null;
+      const fc = uci.charCodeAt(0) - 97;
+      const fr = 8 - parseInt(uci[1]);
+      const tc = uci.charCodeAt(2) - 97;
+      const tr = 8 - parseInt(uci[3]);
+      return { fromRow: fr, fromCol: fc, toRow: tr, toCol: tc };
+    }
+
+    function coordsToUci(fr, fc, tr, tc) {
+      return String.fromCharCode(97 + fc) + (8 - fr) + String.fromCharCode(97 + tc) + (8 - tr);
+    }
+
+    function render() {
+      const boardEl = document.getElementById('board');
+      boardEl.innerHTML = '';
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const sq = document.createElement('div');
+          sq.className = 'square ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+          if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) {
+            sq.classList.add('selected');
+          }
+          if (suggestedFrom && suggestedFrom.r === r && suggestedFrom.c === c) {
+            sq.classList.add('suggested-from');
+          }
+          if (suggestedTo && suggestedTo.r === r && suggestedTo.c === c) {
+            sq.classList.add('suggested-to');
+          }
+          const piece = board[r][c];
+          if (piece) sq.textContent = PIECES[piece] || piece;
+          sq.dataset.row = r;
+          sq.dataset.col = c;
+          sq.addEventListener('click', () => onSquareClick(r, c));
+          boardEl.appendChild(sq);
+        }
+      }
+    }
+
+    function onSquareClick(r, c) {
+      if (gameOver) return;
+      const piece = board[r][c];
+
+      if (selectedSquare) {
+        // Try to move
+        const from = selectedSquare;
+        if (from.r === r && from.c === c) {
+          selectedSquare = null;
+          render();
+          return;
+        }
+        const movingPiece = board[from.r][from.c];
+        const targetPiece = board[r][c];
+        // Don't capture own pieces
+        if (targetPiece && isOwnPiece(targetPiece)) {
+          selectedSquare = { r, c };
+          render();
+          return;
+        }
+        // Execute move
+        board[r][c] = movingPiece;
+        board[from.r][from.c] = null;
+        // Check for pawn promotion
+        if (movingPiece === 'P' && r === 0) board[r][c] = 'Q';
+        if (movingPiece === 'p' && r === 7) board[r][c] = 'q';
+
+        const move = coordsToUci(from.r, from.c, r, c);
+        turn = turn === 'w' ? 'b' : 'w';
+        selectedSquare = null;
+        suggestedFrom = null;
+        suggestedTo = null;
+
+        // Check for king capture (simplified game-over)
+        let whiteKing = false, blackKing = false;
+        for (let row of board) for (let p of row) {
+          if (p === 'K') whiteKing = true;
+          if (p === 'k') blackKing = true;
+        }
+        if (!whiteKing || !blackKing) {
+          gameOver = true;
+          const winner = !whiteKing ? 'black' : 'white';
+          document.getElementById('status').textContent = `Game Over — ${winner} wins!`;
+          postMessage({ type: 'gameOver', winner });
+        }
+
+        postMessage({ type: 'move', from: coordsToUci(from.r, from.c, 0, 0).slice(0, 2), to: coordsToUci(r, c, 0, 0).slice(0, 2), uci: move });
+        document.getElementById('status').textContent = turn === 'w' ? "White's turn" : "Black's turn";
+        render();
+      } else if (piece && isOwnPiece(piece)) {
+        selectedSquare = { r, c };
+        render();
+      }
+    }
+
+    function postMessage(data) {
+      window.parent.postMessage({
+        type: 'plugin:state',
+        pluginId: 'chatbridge-chess',
+        toolCallId: window.__toolCallId || '',
+        state: data
+      }, '*');
+    }
+
+    // Plugin postMessage API
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data || data.type !== 'plugin:invoke') return;
+      if (data.pluginId !== 'chatbridge-chess') return;
+
+      window.__toolCallId = data.toolCallId;
+      const args = data.args || {};
+
+      // Set position
+      const fen = args.position === 'startpos' || !args.position ? INITIAL_FEN : args.position;
+      board = fenToBoard(fen);
+
+      // Show suggested move
+      if (args.suggested_move) {
+        const coords = uciToCoords(args.suggested_move);
+        if (coords) {
+          suggestedFrom = { r: coords.fromRow, c: coords.fromCol };
+          suggestedTo = { r: coords.toRow, c: coords.toCol };
+        }
+      }
+
+      // Show explanation
+      const moveInfoEl = document.getElementById('move-info');
+      if (args.explanation) {
+        moveInfoEl.style.display = 'block';
+        moveInfoEl.textContent = args.suggested_move
+          ? `Suggested: ${args.suggested_move} — ${args.explanation}`
+          : args.explanation;
+      }
+
+      document.getElementById('status').textContent = turn === 'w' ? "White's turn" : "Black's turn";
+      render();
+
+      window.parent.postMessage({
+        type: 'plugin:complete',
+        pluginId: 'chatbridge-chess',
+        toolCallId: data.toolCallId,
+        result: { position: fen, suggestedMove: args.suggested_move || null }
+      }, '*');
+    });
+
+    // Init with starting position
+    board = fenToBoard(INITIAL_FEN);
+    render();
+    document.getElementById('status').textContent = "White's turn";
+
+    // Signal ready
+    window.parent.postMessage({ type: 'plugin:ready', pluginId: 'chatbridge-chess' }, '*');
+  </script>
+</body>
+</html>

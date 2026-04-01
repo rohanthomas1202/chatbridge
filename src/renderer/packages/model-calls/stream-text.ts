@@ -33,6 +33,7 @@ import {
   knowledgeBaseSearchByPromptEngineering,
   searchByPromptEngineering,
 } from './tools'
+import { getPluginToolSet, initPlugins } from '../plugins'
 import fileToolSet from './toolsets/file'
 import { getToolSet } from './toolsets/knowledge-base'
 import websearchToolSet, { parseLinkTool, webSearchTool } from './toolsets/web-search'
@@ -293,8 +294,10 @@ export async function streamText(
     }
 
     // 4. construct tool set
+    initPlugins()
     let tools: ToolSet = {
       ...mcpController.getAvailableTools(),
+      ...getPluginToolSet(),
     }
     if (webBrowsing) {
       tools.web_search = webSearchTool

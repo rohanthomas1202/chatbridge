@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Plugin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #e0e0e0;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .loading { text-align: center; padding: 60px 20px; color: #8892b0; }
+    .loading .spinner {
+      width: 32px; height: 32px; border: 3px solid #4a4a6a;
+      border-top-color: #64ffda; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { text-align: center; padding: 40px; color: #ff6b6b; }
+    .weather-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .location-name { font-size: 20px; font-weight: 700; color: #ccd6f6; }
+    .current {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 12px 0;
+    }
+    .temp-big {
+      font-size: 48px;
+      font-weight: 300;
+      color: #64ffda;
+      line-height: 1;
+    }
+    .conditions {
+      font-size: 14px;
+      color: #a8b2d1;
+      line-height: 1.5;
+    }
+    .conditions span { display: block; }
+    .weather-icon { font-size: 48px; }
+    .forecast {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .forecast-day {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .forecast-day .day { font-size: 12px; color: #8892b0; font-weight: 600; }
+    .forecast-day .icon { font-size: 24px; margin: 4px 0; }
+    .forecast-day .temps { font-size: 13px; }
+    .forecast-day .high { color: #e0e0e0; font-weight: 600; }
+    .forecast-day .low { color: #8892b0; }
+    .attribution {
+      text-align: center;
+      font-size: 10px;
+      color: #4a4a6a;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div>Waiting for location...</div>
+    </div>
+  </div>
+
+  <script>
+    const WMO_CODES = {
+      0: { desc: 'Clear sky', icon: '☀️' },
+      1: { desc: 'Mainly clear', icon: '🌤️' },
+      2: { desc: 'Partly cloudy', icon: '⛅' },
+      3: { desc: 'Overcast', icon: '☁️' },
+      45: { desc: 'Foggy', icon: '🌫️' },
+      48: { desc: 'Rime fog', icon: '🌫️' },
+      51: { desc: 'Light drizzle', icon: '🌦️' },
+      53: { desc: 'Moderate drizzle', icon: '🌦️' },
+      55: { desc: 'Dense drizzle', icon: '🌧️' },
+      61: { desc: 'Slight rain', icon: '🌦️' },
+      63: { desc: 'Moderate rain', icon: '🌧️' },
+      65: { desc: 'Heavy rain', icon: '🌧️' },
+      71: { desc: 'Slight snow', icon: '🌨️' },
+      73: { desc: 'Moderate snow', icon: '❄️' },
+      75: { desc: 'Heavy snow', icon: '❄️' },
+      80: { desc: 'Rain showers', icon: '🌦️' },
+      81: { desc: 'Moderate showers', icon: '🌧️' },
+      82: { desc: 'Violent showers', icon: '⛈️' },
+      95: { desc: 'Thunderstorm', icon: '⛈️' },
+      96: { desc: 'Thunderstorm w/ hail', icon: '⛈️' },
+      99: { desc: 'Thunderstorm w/ heavy hail', icon: '⛈️' },
+    };
+
+    function getWeatherInfo(code) {
+      return WMO_CODES[code] || { desc: 'Unknown', icon: '🌡️' };
+    }
+
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    async function geocode(location) {
+      const res = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en`
+      );
+      const data = await res.json();
+      if (!data.results || data.results.length === 0) throw new Error('Location not found');
+      return data.results[0];
+    }
+
+    async function fetchWeather(lat, lon) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=3`;
+      const res = await fetch(url);
+      return res.json();
+    }
+
+    function renderWeather(location, geo, weather) {
+      const current = weather.current;
+      const daily = weather.daily;
+      const info = getWeatherInfo(current.weather_code);
+
+      let forecastHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const d = new Date(daily.time[i]);
+        const dayInfo = getWeatherInfo(daily.weather_code[i]);
+        forecastHTML += `
+          <div class="forecast-day">
+            <div class="day">${i === 0 ? 'Today' : DAYS[d.getDay()]}</div>
+            <div class="icon">${dayInfo.icon}</div>
+            <div class="temps">
+              <span class="high">${Math.round(daily.temperature_2m_max[i])}°</span>
+              <span class="low">${Math.round(daily.temperature_2m_min[i])}°</span>
+            </div>
+          </div>
+        `;
+      }
+
+      document.getElementById('app').innerHTML = `
+        <div class="weather-card">
+          <div class="location-name">${geo.name}${geo.country ? ', ' + geo.country : ''}</div>
+          <div class="current">
+            <div class="weather-icon">${info.icon}</div>
+            <div class="temp-big">${Math.round(current.temperature_2m)}°C</div>
+            <div class="conditions">
+              <span>${info.desc}</span>
+              <span>Humidity: ${current.relative_humidity_2m}%</span>
+              <span>Wind: ${current.wind_speed_10m} km/h</span>
+            </div>
+          </div>
+          <div class="forecast">${forecastHTML}</div>
+        </div>
+        <div class="attribution">Powered by Open-Meteo API</div>
+      `;
+    }
+
+    async function loadWeather(location) {
+      document.getElementById('app').innerHTML = `
+        <div class="loading">
+          <div class="spinner"></div>
+          <div>Loading weather for ${location}...</div>
+        </div>`;
+      try {
+        const geo = await geocode(location);
+        const weather = await fetchWeather(geo.latitude, geo.longitude);
+        renderWeather(location, geo, weather);
+
+        window.parent.postMessage({
+          type: 'plugin:complete',
+          pluginId: 'chatbridge-weather',
+          toolCallId: window.__toolCallId || '',
+          result: {
+            location: geo.name,
+            country: geo.country,
+            temperature: weather.current.temperature_2m,
+            conditions: getWeatherInfo(weather.current.weather_code).desc,
+            humidity: weather.current.relative_humidity_2m,
+            wind: weather.current.wind_speed_10m,
+          }
+        }, '*');
+      } catch (err) {
+        document.getElementById('app').innerHTML = `
+          <div class="error">
+            <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+            <div>Could not load weather for "${location}"</div>
+            <div style="font-size:12px;margin-top:4px;color:#8892b0">${err.message}</div>
+          </div>`;
+
+        window.parent.postMessage({
+          type: 'plugin:error',
+          pluginId: 'chatbridge-weather',
+          toolCallId: window.__toolCallId || '',
+          error: err.message
+        }, '*');
+      }
+    }
+
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data || data.type !== 'plugin:invoke') return;
+      if (data.pluginId !== 'chatbridge-weather') return;
+
+      window.__toolCallId = data.toolCallId;
+      const location = data.args?.location || 'London';
+      loadWeather(location);
+    });
+
+    // Signal ready
+    window.parent.postMessage({ type: 'plugin:ready', pluginId: 'chatbridge-weather' }, '*');
+  </script>
+</body>
+</html>

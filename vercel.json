@@ -1,0 +1,23 @@
+{
+  "buildCommand": "pnpm run build:web",
+  "outputDirectory": "release/app/dist/renderer",
+  "framework": null,
+  "rewrites": [
+    { "source": "/((?!plugins/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/plugins/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
+}
