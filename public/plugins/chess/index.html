@@ -263,6 +263,7 @@
   <!-- chess.js inlined -->
   <script>
 (function(){
+  try {
   var exports = {};
 'use strict';
 
@@ -3651,6 +3652,9 @@ exports.xoroshiro128 = xoroshiro128;
 
   window.Chess = exports.Chess;
   window.validateFen = exports.validateFen;
+  } catch(e) {
+    document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;white-space:pre-wrap">chess.js load error:\n' + e.message + '\n\n' + e.stack + '</div>';
+  }
 })();
   </script>
 
@@ -3658,6 +3662,7 @@ exports.xoroshiro128 = xoroshiro128;
   <script>
   (function() {
     'use strict';
+    try {
 
     /* ── Constants ── */
     const PLUGIN_ID = 'chatbridge-chess';
@@ -4229,6 +4234,9 @@ exports.xoroshiro128 = xoroshiro128;
 
     // Signal ready
     window.parent.postMessage({ type: 'plugin:ready', pluginId: PLUGIN_ID }, '*');
+  } catch(initError) {
+    document.body.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;white-space:pre-wrap">Chess init error:\n' + initError.message + '\n\n' + initError.stack + '</div>';
+  }
   })();
   </script>
 </body>
