@@ -1,0 +1,22 @@
+- generic [ref=e2]:
+  - heading "♟ Chess" [level=2] [ref=e3]
+  - generic [ref=e4]:
+    - generic [ref=e5]: Play as
+    - generic [ref=e6]:
+      - button "♔ White" [ref=e7] [cursor=pointer]
+      - button "♚ Black" [ref=e8] [cursor=pointer]
+  - generic [ref=e9]:
+    - generic [ref=e10]: Mode
+    - generic [ref=e11]:
+      - button "vs Stockfish" [ref=e12] [cursor=pointer]
+      - button "Pass & Play" [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - generic [ref=e15]: Difficulty
+    - slider [ref=e16]: "1"
+    - generic [ref=e17]:
+      - generic [ref=e18]: Beginner
+      - generic [ref=e19]: Intermediate
+      - generic [ref=e20]: Advanced
+      - generic [ref=e21]: Expert
+    - generic [ref=e22]: Intermediate
+  - button "Start Game" [ref=e23] [cursor=pointer]
