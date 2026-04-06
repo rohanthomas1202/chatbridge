@@ -2,6 +2,11 @@ import platform from '@/platform'
 import { ApiError, BaseError, NetworkError } from '../../shared/models/errors'
 import { isLocalHost } from '../../shared/utils/network_utils'
 import { handleMobileRequest } from './mobile-request'
+import { authInfoStore } from '@/stores/authInfoStore'
+
+function getLocalServerUrl(): string {
+  return process.env.CHATBRIDGE_SERVER_URL || 'http://127.0.0.1:19418'
+}
 
 interface RequestOptions {
   method: string
@@ -89,6 +94,45 @@ export const apiRequest = {
 
   async get(url: string, headers: Record<string, string>, options?: Partial<RequestOptions>) {
     return doRequest(url, { ...options, method: 'GET', headers })
+  },
+}
+
+/**
+ * Send an LLM API request through the local auth backend.
+ * Falls back to direct request if no session token is available.
+ */
+export const proxiedApiRequest = {
+  async post(
+    url: string,
+    headers: Record<string, string>,
+    body: RequestInit['body'],
+    options?: Partial<RequestOptions>
+  ) {
+    const sessionToken = authInfoStore.getState().accessToken
+    if (!sessionToken) {
+      // No session — fall back to direct request
+      return apiRequest.post(url, headers, body, options)
+    }
+
+    const serverUrl = getLocalServerUrl()
+    const parsedUrl = new URL(url)
+    const apiHost = parsedUrl.origin
+    const path = parsedUrl.pathname
+
+    return doRequest(`${serverUrl}/api/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        apiHost,
+        path,
+        upstreamHeaders: headers,
+        body: typeof body === 'string' ? JSON.parse(body) : body,
+      }),
+      signal: options?.signal,
+      retry: options?.retry ?? 3,
+    })
   },
 }
 

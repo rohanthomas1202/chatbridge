@@ -12,6 +12,8 @@ interface AuthTokensActions {
   setTokens: (tokens: AuthTokens) => void
   clearTokens: () => void
   getTokens: () => AuthTokens | null
+  login: (username: string, password: string) => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const initialState: AuthTokensState = {
@@ -49,6 +51,44 @@ export const authInfoStore = createStore<AuthTokensState & AuthTokensActions>()(
           }
           return null
         },
+
+        login: async (username: string, password: string) => {
+          const serverUrl = process.env.CHATBRIDGE_SERVER_URL || 'http://127.0.0.1:19418'
+          const res = await fetch(`${serverUrl}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          })
+          if (!res.ok) throw new Error('Login failed')
+          const data = await res.json()
+          set((state) => {
+            state.accessToken = data.accessToken
+            state.refreshToken = data.refreshToken
+          })
+        },
+
+        refresh: async () => {
+          const refreshToken = get().refreshToken
+          if (!refreshToken) throw new Error('No refresh token')
+          const serverUrl = process.env.CHATBRIDGE_SERVER_URL || 'http://127.0.0.1:19418'
+          const res = await fetch(`${serverUrl}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          })
+          if (!res.ok) {
+            set((state) => {
+              state.accessToken = null
+              state.refreshToken = null
+            })
+            throw new Error('Refresh failed')
+          }
+          const data = await res.json()
+          set((state) => {
+            state.accessToken = data.accessToken
+            state.refreshToken = data.refreshToken
+          })
+        },
       })),
       {
         name: 'chatbox-ai-auth-info',
@@ -73,5 +113,7 @@ export const useAuthTokens = () => {
     setTokens: state.setTokens,
     clearTokens: state.clearTokens,
     getTokens: state.getTokens,
+    login: state.login,
+    refresh: state.refresh,
   }))
 }
