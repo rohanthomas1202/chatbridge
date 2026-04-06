@@ -3974,7 +3974,9 @@ exports.xoroshiro128 = xoroshiro128;
       if (gameOver || thinking) return;
       if (awaitingPromotion) return;
 
-      var sq = e.currentTarget.dataset.sq;
+      var squareEl = e.target.closest('.square');
+      if (!squareEl) return;
+      var sq = squareEl.dataset.sq;
       var piece = chess.get(sq);
       var turnColor = chess.turn();
 
