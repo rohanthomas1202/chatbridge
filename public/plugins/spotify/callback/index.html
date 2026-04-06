@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Spotify Auth</title></head>
+<body style="background:#121212;color:#e0e0e0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div id="status" style="text-align:center">
+  <p style="font-size:18px;color:#1DB954">Connecting to Spotify...</p>
+</div>
+<script>
+  var SPOTIFY_CLIENT_ID = 'd6fb087703014f1aa9cdafaea946fd43';
+  var REDIRECT_URI = window.location.origin + '/plugins/spotify/callback';
+
+  var params = new URLSearchParams(window.location.search);
+  var code = params.get('code');
+  var error = params.get('error');
+
+  if (error) {
+    document.getElementById('status').innerHTML = '<p style="color:#ff6b6b">Authorization denied: ' + error + '</p>';
+  } else if (code) {
+    var verifier = sessionStorage.getItem('spotify_code_verifier');
+
+    fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: SPOTIFY_CLIENT_ID,
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: REDIRECT_URI,
+        code_verifier: verifier || '',
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.access_token) {
+        sessionStorage.setItem('spotify_access_token', data.access_token);
+        document.getElementById('status').innerHTML =
+          '<p style="color:#1DB954;font-size:20px">Connected!</p>' +
+          '<p style="color:#8892b0;margin-top:8px">You can close this tab and try creating a playlist again.</p>';
+      } else {
+        document.getElementById('status').innerHTML =
+          '<p style="color:#ff6b6b">Token exchange failed: ' + (data.error_description || data.error || 'Unknown error') + '</p>';
+      }
+    })
+    .catch(function(e) {
+      document.getElementById('status').innerHTML = '<p style="color:#ff6b6b">Error: ' + e.message + '</p>';
+    });
+  } else {
+    document.getElementById('status').innerHTML = '<p style="color:#ff6b6b">No authorization code received.</p>';
+  }
+</script>
+</body>
+</html>

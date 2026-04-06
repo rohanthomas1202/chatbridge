@@ -84,15 +84,9 @@
       color: #8892b0;
       text-align: center;
     }
-    .mock-badge a {
-      color: #1DB954;
-      text-decoration: none;
-    }
-    .auth-section {
-      text-align: center;
-      padding: 20px;
-    }
     .auth-btn {
+      display: block;
+      margin: 12px auto;
       background: #1DB954;
       color: white;
       border: none;
@@ -104,6 +98,27 @@
       transition: background 0.2s;
     }
     .auth-btn:hover { background: #1ed760; }
+    .success-badge {
+      margin: 8px 16px 12px;
+      padding: 8px 12px;
+      background: rgba(29, 185, 84, 0.15);
+      border: 1px solid rgba(29, 185, 84, 0.3);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #1DB954;
+      text-align: center;
+      font-weight: 600;
+    }
+    .error-badge {
+      margin: 8px 16px 12px;
+      padding: 8px 12px;
+      background: rgba(255, 100, 100, 0.1);
+      border: 1px solid rgba(255, 100, 100, 0.3);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #ff6b6b;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -112,95 +127,266 @@
   </div>
 
   <script>
+    const PLUGIN_ID = 'chatbridge-spotify';
     const ICONS = ['🎵', '🎶', '🎸', '🎹', '🥁', '🎷', '🎺', '🎻', '🎤', '🎼'];
+    const SPOTIFY_CLIENT_ID = 'd6fb087703014f1aa9cdafaea946fd43';
+    const REDIRECT_URI = window.location.origin + '/plugins/spotify/callback';
+    const SCOPES = 'playlist-modify-public playlist-modify-private';
 
+    let pendingPlaylist = null;
+
+    /* ── PKCE Helpers ── */
+    function generateCodeVerifier() {
+      const array = new Uint8Array(32);
+      crypto.getRandomValues(array);
+      return btoa(String.fromCharCode.apply(null, array))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function generateCodeChallenge(verifier) {
+      const data = new TextEncoder().encode(verifier);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return btoa(String.fromCharCode.apply(null, new Uint8Array(hash)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    /* ── Spotify API ── */
+    async function searchTrack(query, token) {
+      const res = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=track&limit=1', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const data = await res.json();
+      return data.tracks && data.tracks.items && data.tracks.items[0] ? data.tracks.items[0].uri : null;
+    }
+
+    async function createSpotifyPlaylist(name, tracks, token) {
+      // Get user ID
+      const meRes = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const me = await meRes.json();
+
+      // Create playlist
+      const plRes = await fetch('https://api.spotify.com/v1/users/' + me.id + '/playlists', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: name, public: true })
+      });
+      const playlist = await plRes.json();
+
+      // Search and add tracks
+      var uris = [];
+      for (var i = 0; i < tracks.length; i++) {
+        var uri = await searchTrack(tracks[i], token);
+        if (uri) uris.push(uri);
+      }
+
+      if (uris.length > 0) {
+        await fetch('https://api.spotify.com/v1/playlists/' + playlist.id + '/tracks', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ uris: uris })
+        });
+      }
+
+      return { playlistId: playlist.id, url: playlist.external_urls.spotify, tracksAdded: uris.length };
+    }
+
+    /* ── OAuth Flow ── */
+    async function startOAuth() {
+      var verifier = generateCodeVerifier();
+      sessionStorage.setItem('spotify_code_verifier', verifier);
+      sessionStorage.setItem('spotify_pending_playlist', JSON.stringify(pendingPlaylist));
+
+      var challenge = await generateCodeChallenge(verifier);
+      var params = new URLSearchParams({
+        client_id: SPOTIFY_CLIENT_ID,
+        response_type: 'code',
+        redirect_uri: REDIRECT_URI,
+        scope: SCOPES,
+        code_challenge_method: 'S256',
+        code_challenge: challenge,
+      });
+
+      window.open('https://accounts.spotify.com/authorize?' + params.toString(), '_blank');
+    }
+
+    async function exchangeCode(code) {
+      var verifier = sessionStorage.getItem('spotify_code_verifier');
+      var res = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: SPOTIFY_CLIENT_ID,
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: REDIRECT_URI,
+          code_verifier: verifier,
+        })
+      });
+      var data = await res.json();
+      return data.access_token;
+    }
+
+    /* ── Rendering ── */
     function parseTracks(tracks) {
-      return tracks.map((t, i) => {
-        const parts = t.split(' - ');
-        const name = parts[0] || t;
-        const artist = parts[1] || 'Unknown Artist';
-        // Generate a "duration" for visual fidelity
-        const min = 2 + Math.floor(Math.random() * 4);
-        const sec = Math.floor(Math.random() * 60);
+      return tracks.map(function(t, i) {
+        var parts = t.split(' - ');
+        var name = parts[0] || t;
+        var artist = parts[1] || 'Unknown Artist';
+        var min = 2 + Math.floor(Math.random() * 4);
+        var sec = Math.floor(Math.random() * 60);
         return {
           num: i + 1,
           name: name.trim(),
           artist: artist.trim(),
-          duration: `${min}:${sec.toString().padStart(2, '0')}`,
+          duration: min + ':' + sec.toString().padStart(2, '0'),
           icon: ICONS[i % ICONS.length],
         };
       });
     }
 
-    function renderPlaylist(name, tracks) {
-      const parsed = parseTracks(tracks);
-      const totalMin = parsed.reduce((sum, t) => {
-        const [m, s] = t.duration.split(':').map(Number);
-        return sum + m + s / 60;
+    function renderPlaylist(name, tracks, mode, extraHTML) {
+      var parsed = parseTracks(tracks);
+      var totalMin = parsed.reduce(function(sum, t) {
+        var p = t.duration.split(':').map(Number);
+        return sum + p[0] + p[1] / 60;
       }, 0);
 
-      let trackHTML = parsed.map(t => `
-        <div class="track">
-          <div class="track-num">${t.num}</div>
-          <div class="track-art">${t.icon}</div>
-          <div class="track-info">
-            <div class="track-name">${t.name}</div>
-            <div class="track-artist">${t.artist}</div>
-          </div>
-          <div class="track-duration">${t.duration}</div>
-        </div>
-      `).join('');
+      var trackHTML = parsed.map(function(t) {
+        return '<div class="track">' +
+          '<div class="track-num">' + t.num + '</div>' +
+          '<div class="track-art">' + t.icon + '</div>' +
+          '<div class="track-info">' +
+            '<div class="track-name">' + t.name + '</div>' +
+            '<div class="track-artist">' + t.artist + '</div>' +
+          '</div>' +
+          '<div class="track-duration">' + t.duration + '</div>' +
+        '</div>';
+      }).join('');
 
-      document.getElementById('app').innerHTML = `
-        <div class="playlist-card">
-          <div class="playlist-header">
-            <div class="spotify-logo">🎧</div>
-            <div>
-              <div class="playlist-title">${name}</div>
-              <div class="playlist-subtitle">${parsed.length} tracks · ~${Math.round(totalMin)} min</div>
-            </div>
-          </div>
-          <div class="track-list">${trackHTML}</div>
-          <div class="mock-badge">
-            Preview mode — connect Spotify OAuth to create real playlists
-          </div>
-        </div>
-      `;
+      document.getElementById('app').innerHTML =
+        '<div class="playlist-card">' +
+          '<div class="playlist-header">' +
+            '<div class="spotify-logo">🎧</div>' +
+            '<div>' +
+              '<div class="playlist-title">' + name + '</div>' +
+              '<div class="playlist-subtitle">' + parsed.length + ' tracks · ~' + Math.round(totalMin) + ' min</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="track-list">' + trackHTML + '</div>' +
+          (extraHTML || '') +
+        '</div>';
     }
 
-    window.addEventListener('message', (event) => {
-      const data = event.data;
-      if (!data || data.type !== 'plugin:invoke') return;
-      if (data.pluginId !== 'chatbridge-spotify') return;
+    /* ── Check for OAuth callback ── */
+    var urlParams = new URLSearchParams(window.location.search);
+    var authCode = urlParams.get('code');
 
-      window.__toolCallId = data.toolCallId;
-      const args = data.args || {};
-      const name = args.name || 'My Playlist';
-      const tracks = Array.isArray(args.tracks) ? args.tracks : [];
+    if (authCode) {
+      // We're on the callback page — exchange code for token
+      document.getElementById('app').innerHTML = '<div class="loading">Connecting to Spotify...</div>';
+
+      (async function() {
+        try {
+          var token = await exchangeCode(authCode);
+          var saved = JSON.parse(sessionStorage.getItem('spotify_pending_playlist') || '{}');
+
+          if (saved.name && saved.tracks) {
+            document.getElementById('app').innerHTML = '<div class="loading">Creating playlist...</div>';
+            var result = await createSpotifyPlaylist(saved.name, saved.tracks, token);
+
+            renderPlaylist(saved.name, saved.tracks, 'real',
+              '<div class="success-badge">Playlist created on Spotify! ' + result.tracksAdded + ' tracks added. ' +
+              '<a href="' + result.url + '" target="_blank" style="color:#1DB954">Open in Spotify</a></div>');
+
+            // Clean up
+            window.history.replaceState({}, '', window.location.pathname);
+            sessionStorage.removeItem('spotify_code_verifier');
+            sessionStorage.removeItem('spotify_pending_playlist');
+          } else {
+            document.getElementById('app').innerHTML = '<div class="loading" style="color:#ff6b6b">No pending playlist found.</div>';
+          }
+        } catch(e) {
+          document.getElementById('app').innerHTML = '<div class="error-badge">OAuth error: ' + e.message + '</div>';
+        }
+      })();
+    }
+
+    /* ── Plugin message handler ── */
+    window.addEventListener('message', function(event) {
+      var data = event.data;
+      if (!data || data.type !== 'plugin:invoke') return;
+      if (data.pluginId !== PLUGIN_ID) return;
+
+      var args = data.args || {};
+      var name = args.name || 'My Playlist';
+      var tracks = Array.isArray(args.tracks) ? args.tracks : [];
 
       if (tracks.length === 0) {
-        document.getElementById('app').innerHTML = `
-          <div class="loading" style="color:#ff6b6b">No tracks provided.</div>`;
+        document.getElementById('app').innerHTML =
+          '<div class="loading" style="color:#ff6b6b">No tracks provided.</div>';
         return;
       }
 
-      renderPlaylist(name, tracks);
+      pendingPlaylist = { name: name, tracks: tracks };
 
-      window.parent.postMessage({
-        type: 'plugin:complete',
-        pluginId: 'chatbridge-spotify',
-        toolCallId: data.toolCallId,
-        result: {
-          mode: 'mock',
-          playlistName: name,
-          trackCount: tracks.length,
-          tracks: tracks,
-        }
-      }, '*');
+      // Check if we have a cached token
+      var token = sessionStorage.getItem('spotify_access_token');
+
+      if (token) {
+        // Try to create playlist with cached token
+        renderPlaylist(name, tracks, 'creating',
+          '<div class="mock-badge">Creating playlist on Spotify...</div>');
+
+        createSpotifyPlaylist(name, tracks, token).then(function(result) {
+          renderPlaylist(name, tracks, 'real',
+            '<div class="success-badge">Playlist created on Spotify! ' + result.tracksAdded + ' tracks added. ' +
+            '<a href="' + result.url + '" target="_blank" style="color:#1DB954">Open in Spotify</a></div>');
+
+          window.parent.postMessage({
+            type: 'plugin:complete',
+            pluginId: PLUGIN_ID,
+            toolCallId: data.toolCallId,
+            result: { mode: 'real', playlistUrl: result.url, tracksAdded: result.tracksAdded }
+          }, '*');
+        }).catch(function() {
+          // Token expired — show auth button
+          sessionStorage.removeItem('spotify_access_token');
+          renderPlaylist(name, tracks, 'mock',
+            '<button class="auth-btn" onclick="startOAuth()">Connect with Spotify</button>' +
+            '<div class="mock-badge">Preview mode — click above to create a real playlist</div>');
+
+          window.parent.postMessage({
+            type: 'plugin:complete',
+            pluginId: PLUGIN_ID,
+            toolCallId: data.toolCallId,
+            result: { mode: 'mock', playlistName: name, trackCount: tracks.length }
+          }, '*');
+        });
+      } else {
+        // No token — show preview with auth button
+        renderPlaylist(name, tracks, 'mock',
+          '<button class="auth-btn" onclick="startOAuth()">Connect with Spotify</button>' +
+          '<div class="mock-badge">Preview mode — click above to create a real playlist</div>');
+
+        window.parent.postMessage({
+          type: 'plugin:complete',
+          pluginId: PLUGIN_ID,
+          toolCallId: data.toolCallId,
+          result: { mode: 'mock', playlistName: name, trackCount: tracks.length }
+        }, '*');
+      }
     });
 
     // Signal ready
-    window.parent.postMessage({ type: 'plugin:ready', pluginId: 'chatbridge-spotify' }, '*');
+    window.parent.postMessage({ type: 'plugin:ready', pluginId: PLUGIN_ID }, '*');
   </script>
 </body>
 </html>
