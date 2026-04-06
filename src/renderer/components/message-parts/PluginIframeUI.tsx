@@ -77,6 +77,24 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
     return () => window.removeEventListener('message', handleMessage)
   }, [handleMessage])
 
+  // Fallback: if we missed plugin:ready (race condition), send invoke on iframe load
+  const handleIframeLoad = useCallback(() => {
+    if (ready) return
+    // Give the iframe script a moment to initialize, then send invoke directly
+    setTimeout(() => {
+      if (!ready && iframeRef.current?.contentWindow) {
+        setReady(true)
+        const invoke: PluginHostMessage = {
+          type: 'plugin:invoke',
+          pluginId: result.pluginId,
+          toolCallId: part.toolCallId,
+          args: result.args,
+        }
+        iframeRef.current.contentWindow.postMessage(invoke, '*')
+      }
+    }, 300)
+  }, [ready, result.pluginId, result.args, part.toolCallId])
+
   useEffect(() => {
     if (ready) return
     const timer = setTimeout(() => setTimedOut(true), 30_000)
@@ -101,6 +119,7 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
           height={result.height}
           style={{ border: 'none', display: 'block' }}
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          onLoad={handleIframeLoad}
         />
         {timedOut && (
           <Box
