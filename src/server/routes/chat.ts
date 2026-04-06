@@ -1,6 +1,20 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+const BLOCKED_HOST_PATTERNS = [
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^0\./,
+  /^localhost$/i,
+]
+
+function isBlockedHost(hostname: string): boolean {
+  return BLOCKED_HOST_PATTERNS.some((pattern) => pattern.test(hostname))
+}
+
 const chatProxySchema = z.object({
   apiHost: z.string().url(),
   path: z.string().refine((v) => v.startsWith('/'), { message: 'path must start with /' }),
@@ -18,16 +32,28 @@ export function createChatRoutes(): Hono {
     }
 
     const { apiHost, path, upstreamHeaders, body } = parseResult.data
+
+    // SSRF protection: block requests to private/internal networks
+    const hostname = new URL(apiHost).hostname
+    if (isBlockedHost(hostname)) {
+      return c.json({ error: 'Upstream host is not allowed' }, 403)
+    }
+
     const upstreamUrl = `${apiHost}${path}`
 
-    const upstreamRes = await globalThis.fetch(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...upstreamHeaders,
-      },
-      body: JSON.stringify(body),
-    })
+    let upstreamRes: Response
+    try {
+      upstreamRes = await globalThis.fetch(upstreamUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...upstreamHeaders,
+        },
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      return c.json({ error: 'Upstream request failed', message: (err as Error).message }, 502)
+    }
 
     // Stream the response back with the same status and content-type
     const contentType = upstreamRes.headers.get('Content-Type') || 'application/json'

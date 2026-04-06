@@ -5,6 +5,8 @@ export interface SessionPayload extends JoseJWTPayload {
   sid: string
   /** Display name (optional) */
   name?: string
+  /** Token type — 'access' or 'refresh' */
+  type?: 'access' | 'refresh'
 }
 
 export interface LoginRequest {

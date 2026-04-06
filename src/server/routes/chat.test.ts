@@ -124,4 +124,51 @@ describe('chat proxy routes', () => {
 
     expect(res.status).toBe(400)
   })
+
+  it('blocks requests to private/internal hosts (SSRF protection)', async () => {
+    const app = createTestApp()
+    const token = await signAccessToken({ sid: 'user-1' })
+
+    for (const host of ['http://127.0.0.1', 'http://10.0.0.1', 'http://192.168.1.1', 'http://169.254.169.254']) {
+      const res = await app.request('/api/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiHost: host,
+          path: '/chat/completions',
+          upstreamHeaders: {},
+          body: {},
+        }),
+      })
+      expect(res.status).toBe(403)
+    }
+  })
+
+  it('returns 502 when upstream fetch fails', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Connection refused'))
+
+    const app = createTestApp()
+    const token = await signAccessToken({ sid: 'user-1' })
+
+    const res = await app.request('/api/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiHost: 'https://api.openai.com/v1',
+        path: '/chat/completions',
+        upstreamHeaders: {},
+        body: {},
+      }),
+    })
+
+    expect(res.status).toBe(502)
+    const body = await res.json()
+    expect(body.error).toBe('Upstream request failed')
+  })
 })

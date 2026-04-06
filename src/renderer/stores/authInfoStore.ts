@@ -3,6 +3,10 @@ import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import type { AuthTokens } from '../routes/settings/provider/chatbox-ai/-components/types'
 
+function getLocalServerUrl(): string {
+  return process.env.CHATBRIDGE_SERVER_URL || 'http://127.0.0.1:19418'
+}
+
 interface AuthTokensState {
   accessToken: string | null
   refreshToken: string | null
@@ -53,8 +57,7 @@ export const authInfoStore = createStore<AuthTokensState & AuthTokensActions>()(
         },
 
         login: async (username: string, password: string) => {
-          const serverUrl = process.env.CHATBRIDGE_SERVER_URL || 'http://127.0.0.1:19418'
-          const res = await fetch(`${serverUrl}/auth/login`, {
+          const res = await fetch(`${getLocalServerUrl()}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password }),
@@ -70,8 +73,7 @@ export const authInfoStore = createStore<AuthTokensState & AuthTokensActions>()(
         refresh: async () => {
           const refreshToken = get().refreshToken
           if (!refreshToken) throw new Error('No refresh token')
-          const serverUrl = process.env.CHATBRIDGE_SERVER_URL || 'http://127.0.0.1:19418'
-          const res = await fetch(`${serverUrl}/auth/refresh`, {
+          const res = await fetch(`${getLocalServerUrl()}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken }),

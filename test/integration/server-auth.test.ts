@@ -1,8 +1,10 @@
 // test/integration/server-auth.test.ts
-import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { createApp } from '../../src/server'
 import { resetServerConfig } from '../../src/server/config'
 import type { Hono } from 'hono'
+
+const originalFetch = globalThis.fetch
 
 describe('server auth integration', () => {
   let app: Hono
@@ -10,6 +12,10 @@ describe('server auth integration', () => {
   beforeEach(() => {
     resetServerConfig()
     app = createApp()
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
   })
 
   it('full login → access protected route → refresh → access again flow', async () => {
@@ -27,8 +33,6 @@ describe('server auth integration', () => {
     const { accessToken, refreshToken } = await loginRes.json()
 
     // 3. Access protected route with access token
-    // Mock fetch for the upstream call
-    const originalFetch = globalThis.fetch
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ choices: [{ message: { content: 'Hi' } }] }), {
         status: 200,

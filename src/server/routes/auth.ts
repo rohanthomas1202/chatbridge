@@ -21,7 +21,7 @@ export function createAuthRoutes(): Hono {
       return c.json({ error: 'username and password are required' }, 400)
     }
 
-    const { username, password } = parseResult.data
+    const { username, password: _password } = parseResult.data
 
     // TODO: Replace with real credential verification.
     // For now, accept any non-empty username/password and generate a session.
