@@ -32,10 +32,24 @@ export const PluginIframeUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
 
 const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ part, result }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const invokedRef = useRef(false)
   const [ready, setReady] = useState(false)
   const [pluginState, setPluginState] = useState<Record<string, unknown> | null>(null)
   const [timedOut, setTimedOut] = useState(false)
   const [iframeKey, setIframeKey] = useState(0)
+
+  const sendInvoke = useCallback(() => {
+    if (invokedRef.current) return
+    invokedRef.current = true
+    setReady(true)
+    const invoke: PluginHostMessage = {
+      type: 'plugin:invoke',
+      pluginId: result.pluginId,
+      toolCallId: part.toolCallId,
+      args: result.args,
+    }
+    iframeRef.current?.contentWindow?.postMessage(invoke, '*')
+  }, [result.pluginId, result.args, part.toolCallId])
 
   const handleMessage = useCallback(
     (event: MessageEvent<PluginIframeMessage>) => {
@@ -47,15 +61,7 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
       switch (msg.type) {
         case 'plugin:ready':
           if (msg.pluginId === result.pluginId) {
-            setReady(true)
-            // Send the invocation to the iframe
-            const invoke: PluginHostMessage = {
-              type: 'plugin:invoke',
-              pluginId: result.pluginId,
-              toolCallId: part.toolCallId,
-              args: result.args,
-            }
-            iframeRef.current?.contentWindow?.postMessage(invoke, '*')
+            sendInvoke()
           }
           break
         case 'plugin:state':
@@ -65,11 +71,10 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
           break
         case 'plugin:complete':
         case 'plugin:error':
-          // Could update part state, but that's managed by the streaming layer
           break
       }
     },
-    [result.pluginId, result.args, part.toolCallId]
+    [result.pluginId, sendInvoke]
   )
 
   useEffect(() => {
@@ -79,21 +84,9 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
 
   // Fallback: if we missed plugin:ready (race condition), send invoke on iframe load
   const handleIframeLoad = useCallback(() => {
-    if (ready) return
-    // Give the iframe script a moment to initialize, then send invoke directly
-    setTimeout(() => {
-      if (!ready && iframeRef.current?.contentWindow) {
-        setReady(true)
-        const invoke: PluginHostMessage = {
-          type: 'plugin:invoke',
-          pluginId: result.pluginId,
-          toolCallId: part.toolCallId,
-          args: result.args,
-        }
-        iframeRef.current.contentWindow.postMessage(invoke, '*')
-      }
-    }, 300)
-  }, [ready, result.pluginId, result.args, part.toolCallId])
+    // Give the iframe script a moment to set up its message listener
+    setTimeout(() => sendInvoke(), 300)
+  }, [sendInvoke])
 
   useEffect(() => {
     if (ready) return
@@ -143,6 +136,7 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
               onClick={() => {
                 setTimedOut(false)
                 setReady(false)
+                invokedRef.current = false
                 setIframeKey((k) => k + 1)
               }}
               style={{

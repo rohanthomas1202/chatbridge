@@ -3969,12 +3969,20 @@ exports.xoroshiro128 = xoroshiro128;
     // Event delegation — single click listener on board
     boardEl.addEventListener('click', onSquareClick);
 
+    // Also listen for clicks on the document to detect if clicks reach the iframe at all
+    document.addEventListener('click', function(e) {
+      console.log('[chess-debug] document click:', e.target.tagName, e.target.className);
+    });
+
     /* ── Square click handler ── */
     function onSquareClick(e) {
+      console.log('[chess-debug] onSquareClick fired, target:', e.target.tagName, e.target.className,
+        'gameOver:', gameOver, 'thinking:', thinking, 'awaitingPromotion:', awaitingPromotion);
       if (gameOver || thinking) return;
       if (awaitingPromotion) return;
 
       var squareEl = e.target.closest('.square');
+      console.log('[chess-debug] squareEl:', squareEl ? squareEl.dataset.sq : 'null');
       if (!squareEl) return;
       var sq = squareEl.dataset.sq;
       var piece = chess.get(sq);
