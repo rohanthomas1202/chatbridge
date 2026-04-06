@@ -8,16 +8,16 @@ import type { PluginDefinition } from '@shared/types/plugin'
 export const chessPlugin: PluginDefinition = {
   id: 'chatbridge-chess',
   name: 'Chess',
-  description: 'Interactive chess board – the AI can suggest moves and play games',
-  version: '1.0.0',
+  description: 'Interactive chess board with Stockfish AI opponent — play games, get move suggestions',
+  version: '2.0.0',
   iframeUrl: '/plugins/chess/index.html',
   icon: '♟',
   defaultWidth: 500,
-  defaultHeight: 520,
+  defaultHeight: 580,
   toolSchema: {
     name: 'suggest_chess_move',
     description:
-      'Suggest the next chess move given the current board position in FEN notation. Returns the suggested move and renders an interactive chess board.',
+      'Start a chess game or suggest the next move. Renders an interactive board with optional AI opponent (Stockfish). The user can play against Stockfish at configurable difficulty or play pass-and-play with another person.',
     parameters: {
       type: 'object',
       properties: {
@@ -26,10 +26,16 @@ export const chessPlugin: PluginDefinition = {
           description:
             'The current board position in FEN notation. Use "startpos" for the starting position.',
         },
+        difficulty: {
+          type: 'string',
+          enum: ['beginner', 'intermediate', 'advanced', 'expert'],
+          description:
+            'Stockfish difficulty level. beginner=depth 1, intermediate=depth 5, advanced=depth 10, expert=depth 18. If set without suggested_move, Stockfish computes the best move. Defaults to intermediate.',
+        },
         suggested_move: {
           type: 'string',
           description:
-            'The suggested move in UCI notation (e.g., "e2e4", "g1f3"). Include this when recommending a specific move.',
+            'A suggested move in UCI notation (e.g., "e2e4"). If omitted and difficulty is set, Stockfish computes the suggestion internally.',
         },
         explanation: {
           type: 'string',
