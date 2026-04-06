@@ -233,7 +233,7 @@
     "react-hotkeys-hook": "^4.6.1",
     "react-i18next": "^12.2.0",
     "react-markdown": "^9.0.0",
-    "react-photoswipe-gallery": "^3.1.1",
+    "react-photoswipe-gallery": "^4.0.0",
     "react-refresh": "^0.14.0",
     "react-router-dom": "^6.11.2",
     "react-swipeable-views": "^0.14.1",
