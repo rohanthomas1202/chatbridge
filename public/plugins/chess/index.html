@@ -3778,6 +3778,16 @@ exports.xoroshiro128 = xoroshiro128;
     var sfResolve = null;
     var sfTimeout = null;
 
+    function terminateStockfish() {
+      if (stockfishWorker) {
+        stockfishWorker.terminate();
+        stockfishWorker = null;
+      }
+      stockfishReady = false;
+      if (sfTimeout) { clearTimeout(sfTimeout); sfTimeout = null; }
+      if (sfResolve) { sfResolve(null); sfResolve = null; }
+    }
+
     function onStockfishMessage(e) {
       var msg = typeof e.data === 'string' ? e.data : (e.data ? e.data.toString() : '');
       if (msg === 'uciok') {
@@ -3799,6 +3809,9 @@ exports.xoroshiro128 = xoroshiro128;
           setTimeout(function() { resolve(getRandomMove()); }, 300);
           return;
         }
+        // Cancel any pending request before starting a new one
+        if (sfResolve) { var old = sfResolve; sfResolve = null; old(null); }
+        if (sfTimeout) { clearTimeout(sfTimeout); sfTimeout = null; }
         sfResolve = resolve;
         sfTimeout = setTimeout(function() {
           sfResolve = null;
@@ -3854,9 +3867,20 @@ exports.xoroshiro128 = xoroshiro128;
       if (promo) moveObj.promotion = promo;
       var result = chess.move(moveObj);
       if (!result) {
-        // Invalid move from engine; try random
-        var rm = getRandomMove();
-        if (rm) applyUciMove(rm);
+        // Invalid move from engine; apply random legal move directly (no recursion)
+        var moves = chess.moves({ verbose: true });
+        if (moves.length > 0) {
+          var rm = moves[Math.floor(Math.random() * moves.length)];
+          chess.move(rm);
+          lastMoveFrom = rm.from;
+          lastMoveTo = rm.to;
+        }
+        selectedSquare = null;
+        legalMovesForSelected = [];
+        suggestedFrom = null;
+        suggestedTo = null;
+        render();
+        updateStatus();
         return;
       }
       lastMoveFrom = from;
@@ -3934,11 +3958,13 @@ exports.xoroshiro128 = xoroshiro128;
             }
           }
 
-          div.addEventListener('click', onSquareClick);
           boardEl.appendChild(div);
         }
       }
     }
+
+    // Event delegation — single click listener on board
+    boardEl.addEventListener('click', onSquareClick);
 
     /* ── Square click handler ── */
     function onSquareClick(e) {
@@ -4065,7 +4091,7 @@ exports.xoroshiro128 = xoroshiro128;
       }
       if (chess.isDraw()) {
         gameOver = true;
-        let reason = 'draw';
+        var reason = 'draw';
         if (chess.isThreefoldRepetition()) {
           reason = 'draw-repetition';
           statusEl.textContent = 'Draw by threefold repetition!';
@@ -4101,7 +4127,7 @@ exports.xoroshiro128 = xoroshiro128;
         pluginId: PLUGIN_ID,
         toolCallId: toolCallId,
         state: state
-      }, '*');
+      }, hostOrigin);
     }
 
     function sendComplete(result) {
@@ -4114,10 +4140,17 @@ exports.xoroshiro128 = xoroshiro128;
     }
 
     /* ── Host message handler ── */
+    var hostOrigin = '*';
+
     window.addEventListener('message', function(event) {
       var data = event.data;
       if (!data || data.type !== 'plugin:invoke') return;
       if (data.pluginId !== PLUGIN_ID) return;
+
+      // Capture host origin for secure postMessage responses
+      if (event.origin && event.origin !== 'null') {
+        hostOrigin = event.origin;
+      }
 
       toolCallId = data.toolCallId || '';
       var args = data.args || {};
@@ -4134,13 +4167,18 @@ exports.xoroshiro128 = xoroshiro128;
         chess = new Chess();
       }
 
+      // Full state reset
       gameOver = false;
+      thinking = false;
       selectedSquare = null;
       legalMovesForSelected = [];
       lastMoveFrom = null;
       lastMoveTo = null;
       suggestedFrom = null;
       suggestedTo = null;
+      gameMode = 'ai';
+      playerColor = 'w';
+      flipped = false;
 
       // Show game screen if still on setup
       if (setupScreen.style.display !== 'none') {
