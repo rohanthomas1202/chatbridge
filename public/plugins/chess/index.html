@@ -4065,9 +4065,19 @@ exports.xoroshiro128 = xoroshiro128;
       }
       if (chess.isDraw()) {
         gameOver = true;
-        statusEl.textContent = 'Draw!';
+        let reason = 'draw';
+        if (chess.isThreefoldRepetition()) {
+          reason = 'draw-repetition';
+          statusEl.textContent = 'Draw by threefold repetition!';
+        } else if (chess.isInsufficientMaterial()) {
+          reason = 'draw-insufficient';
+          statusEl.textContent = 'Draw by insufficient material!';
+        } else {
+          reason = 'draw-50-move';
+          statusEl.textContent = 'Draw by 50-move rule!';
+        }
         statusEl.classList.remove('thinking');
-        sendState({ type: 'gameOver', reason: 'draw', winner: 'draw' });
+        sendState({ type: 'gameOver', reason: reason, winner: 'draw' });
         return true;
       }
       return false;
