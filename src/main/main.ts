@@ -36,6 +36,9 @@ import {
   store,
 } from './store-node'
 import * as windowState from './window_state'
+import { serve } from '@hono/node-server'
+import { createApp } from '../server'
+import { getServerConfig } from '../server/config'
 
 const knowledgeBaseInitPromise = import('./knowledge-base/index.js')
   .then((mod) => mod.getInitPromise())
@@ -432,6 +435,13 @@ if (!gotTheLock) {
     .whenReady()
     .then(async () => {
       await knowledgeBaseInitPromise
+
+      // Start the auth backend server
+      const honoApp = createApp()
+      const serverConfig = getServerConfig()
+      serve({ fetch: honoApp.fetch, port: serverConfig.port })
+      log.info(`Auth backend started on http://127.0.0.1:${serverConfig.port}`)
+
       await createWindow()
       ensureTray()
       // Remove this if your app does not use auto updates
