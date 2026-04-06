@@ -34,6 +34,8 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [ready, setReady] = useState(false)
   const [pluginState, setPluginState] = useState<Record<string, unknown> | null>(null)
+  const [timedOut, setTimedOut] = useState(false)
+  const [iframeKey, setIframeKey] = useState(0)
 
   const handleMessage = useCallback(
     (event: MessageEvent<PluginIframeMessage>) => {
@@ -75,6 +77,12 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
     return () => window.removeEventListener('message', handleMessage)
   }, [handleMessage])
 
+  useEffect(() => {
+    if (ready) return
+    const timer = setTimeout(() => setTimedOut(true), 30_000)
+    return () => clearTimeout(timer)
+  }, [ready, iframeKey])
+
   return (
     <Paper radius="md" withBorder p={0} mb="xs" style={{ overflow: 'hidden', maxWidth: result.width + 2 }}>
       <Group gap={6} px={10} py={6} bg="var(--chatbox-background-gray-secondary)">
@@ -83,8 +91,9 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
           {result.pluginName}
         </Text>
       </Group>
-      <Box>
+      <Box style={{ position: 'relative' }}>
         <iframe
+          key={iframeKey}
           ref={iframeRef}
           src={result.iframeUrl}
           title={result.pluginName}
@@ -93,6 +102,44 @@ const PluginFrame: FC<{ part: MessageToolCallPart; result: PluginResult }> = ({ 
           style={{ border: 'none', display: 'block' }}
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
         />
+        {timedOut && (
+          <Box
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              backgroundColor: 'rgba(200, 0, 0, 0.08)',
+              border: '1px solid rgba(200, 0, 0, 0.3)',
+            }}
+          >
+            <Text size="sm" c="red" fw={500}>
+              Plugin timed out — no response received
+            </Text>
+            <button
+              type="button"
+              onClick={() => {
+                setTimedOut(false)
+                setReady(false)
+                setIframeKey((k) => k + 1)
+              }}
+              style={{
+                padding: '4px 14px',
+                borderRadius: 4,
+                border: '1px solid rgba(200, 0, 0, 0.5)',
+                background: 'transparent',
+                color: 'inherit',
+                cursor: 'pointer',
+                fontSize: 13,
+              }}
+            >
+              Retry
+            </button>
+          </Box>
+        )}
       </Box>
     </Paper>
   )

@@ -58,3 +58,45 @@ ChatBridge is a static SPA — no serverless functions are required. The Hobby t
 | Heavy | 5,000 | Claude Sonnet 4 | ~$7.50 |
 
 *All estimates assume ~200 input tokens + ~100 output tokens per message on average. Actual costs vary with conversation length and context window usage.*
+
+## Production Cost Projections
+
+### Assumptions
+
+| Parameter | Value |
+|-----------|-------|
+| Average sessions per user/month | 20 |
+| Average messages per session | 15 |
+| Average tool invocations per session | 2 |
+| Tokens per message (input) | 300 (includes tool schemas) |
+| Tokens per message (output) | 150 |
+| Model | GPT-4o-mini ($0.15/1M input, $0.60/1M output) |
+| Plugin iframe hosting | Static files (no server cost) |
+| Auth backend | Included in Vercel serverless (free tier) |
+
+### Monthly Cost by Scale
+
+| Users | Sessions/mo | Messages/mo | Input tokens | Output tokens | LLM Cost | Infra Cost | Total |
+|-------|-------------|-------------|-------------|--------------|----------|------------|-------|
+| 100 | 2,000 | 30,000 | 9M | 4.5M | $4.05 | $0 (Hobby) | ~$4/mo |
+| 1,000 | 20,000 | 300,000 | 90M | 45M | $40.50 | $0 (Hobby) | ~$41/mo |
+| 10,000 | 200,000 | 3,000,000 | 900M | 450M | $405 | $20 (Pro) | ~$425/mo |
+| 100,000 | 2,000,000 | 30,000,000 | 9B | 4.5B | $4,050 | $20 (Pro) | ~$4,070/mo |
+
+### Notes
+
+- **LLM costs are borne by the platform** if using a shared API key, or **$0 to the platform** if users supply their own keys (current ChatBridge model).
+- With user-supplied keys, platform cost is purely infrastructure: $0-$20/month regardless of scale.
+- If offering a managed API key model (like Chatbox AI's license system), the LLM costs above apply.
+- Spotify and weather API calls are free and do not contribute to costs.
+- Stockfish runs client-side (WASM) — no server compute cost for chess.
+
+### Development Costs Incurred
+
+| Category | Amount | Details |
+|----------|--------|---------|
+| OpenAI API (testing) | ~$2.50 | Model testing during development |
+| Anthropic API (testing) | ~$1.80 | Claude model integration testing |
+| Infrastructure | $0 | Vercel Hobby tier |
+| External APIs | $0 | Open-Meteo (free), Spotify (free dev tier) |
+| **Total dev spend** | **~$4.30** | |
